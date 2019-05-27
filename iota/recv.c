@@ -13,7 +13,7 @@
 #include "common.h"
 
 
-int mam_receive(char *payload, int *payload_size, char *host, int port, char *bundle_hash, char *channel_id) {
+int mam_receive(byte_t *payload, int *payload_size, char *host, int port, char *bundle_hash, char *channel_id) {
   mam_api_t api;
   int ret = EXIT_SUCCESS;
   tryte_t *payload_trytes = NULL;
@@ -36,18 +36,55 @@ int mam_receive(char *payload, int *payload_size, char *host, int port, char *bu
   receive_bundle(host, port, (tryte_t *)bundle_hash, bundle);
 
   mam_psk_t_set_add(&api.psks, &psk);
-    mam_api_add_trusted_channel_pk(&api, (tryte_t *)channel_id);
+  mam_api_add_trusted_channel_pk(&api, (tryte_t *)channel_id);
 
-  if (mam_api_bundle_read(&api, bundle, &payload_trytes,(size_t *) payload_size, &is_last_packet) == RC_OK) {
-    if (payload_trytes == NULL || *payload_size == 0) {
+  size_t payload_tryte_size;
+  if (mam_api_bundle_read(&api, bundle, &payload_trytes,(size_t *) &payload_tryte_size, &is_last_packet) == RC_OK) {
+    if (payload_trytes == NULL || payload_tryte_size == 0) {
       fprintf(stderr, "No payload\n");
     } else {
-      fprintf(stderr, "payload_size: %i\n", *payload_size);
 
-      payload = calloc(*payload_size * 2 + 1, sizeof(char));
+        fprintf(stderr, "payload_trytes: ");
+        for(int i = 0; i < payload_tryte_size; i++){
+            fprintf(stderr, "%c", payload_trytes[i]);
+        }
+        fprintf(stderr, "\n");
 
-      trytes_to_ascii(payload_trytes, *payload_size, payload);
-      fprintf(stderr, "Payload: %s\n", payload);
+        fprintf(stderr, "payload_size_trytes: %i\n", payload_tryte_size);
+
+        *payload_size = MIN_BYTES(payload_tryte_size * NUMBER_OF_TRITS_IN_A_TRYTE);
+        payload = (byte_t*) malloc(*payload_size * sizeof(byte_t));
+
+        size_t trit_size = (payload_tryte_size * NUMBER_OF_TRITS_IN_A_TRYTE);
+        trit_t* payload_trits = (trit_t*) malloc(trit_size * sizeof(trit_t));
+
+        trytes_to_trits(payload_trytes, payload_trits, payload_tryte_size);
+
+        fprintf(stderr, "payload_size_trits: %i\n", trit_size);
+
+        fprintf(stderr, "payload: [ ");
+        for (unsigned int i = 0; i < trit_size; i++) {
+            if (i == 0) {
+                fprintf(stderr, "0x%x", payload_trits[i]);
+            } else {
+                printf(stderr, ", 0x%x", payload_trits[i]);
+            }
+        }
+        printf(" ]\n");
+
+        trits_to_bytes(payload_trits, payload, trit_size);
+
+        fprintf(stderr, "payload_size: %i\n", *payload_size);
+
+        fprintf(stderr, "payload: [ ");
+        for (unsigned int i = 0; i < *payload_size; i++) {
+            if (i == 0) {
+                fprintf(stderr, "0x%x", payload[i]);
+            } else {
+                printf(stderr, ", 0x%x", payload[i]);
+            }
+        }
+        printf(" ]\n");
     }
   } else {
     fprintf(stderr, "mam_api_bundle_read_msg failed\n");

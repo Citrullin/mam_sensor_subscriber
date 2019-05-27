@@ -30,8 +30,8 @@
 
 #define IOTA_HOST "node05.iotatoken.nl"
 #define IOTA_PORT 16265
-#define IOTA_ADDRESS "V9MUPZNOBTQKUEHE9QAGUMKJRHFUWDQYHSUSZRWAOQBSUILELAYRQNIZXDCTKOUECUGFIHZZOOLGJDCTM"
-#define IOTA_BUNDLE "EJAWFID9NNAECB9XNIWIDLIQEYVEO9SLTKHRGALYXGDBDHIZAHWCPWTMEMGUAVNIELPEBNTTYJDFCELHD"
+#define IOTA_ADDRESS "HVJ9DCXBHZAOGXZZGREYDUBGOEDUDLSPVCUFAABVSZ9DGXUD9S9CUTYMRFLDPYRVBJOLPLAOZHHKIVGSJ"
+#define IOTA_BUNDLE "UIVVAKNBP9ZLEHRUKHUYXJARY9KWQAKPVFWZQ9TIIVYW9BNLAECDBJHUEXJXZHDTXACVYKKOJUCNGGVTB"
 
 #define DEBUG_SERVER true
 
@@ -56,10 +56,11 @@ void data_response_to_env_data(env_sensor_data_t * sensor_data, environmentSenso
     sensor_data->atmosphericPressure = get_scaled_value(&data_response->atmosphericPressure);
 }
 
+
 void *run_receiver_thread(void *args) {
     (void) args;
 
-    char payload;
+    byte_t payload;
     int payload_size;
     retcode_t err = mam_receive(&payload, &payload_size, IOTA_HOST, IOTA_PORT, IOTA_BUNDLE, IOTA_ADDRESS);
 
@@ -69,7 +70,7 @@ void *run_receiver_thread(void *args) {
 
     environmentSensors_DataResponse data_response = {};
 
-    //env_sensor_data_response_decode(&data_response, (uint8_t *) &payload, &payload_size);
+    env_sensor_data_response_decode(&data_response, (uint8_t *) &payload, payload_size);
     env_sensor_data_t data = {};
 
     data_response_to_env_data(&data, &data_response);
@@ -80,9 +81,10 @@ void *run_receiver_thread(void *args) {
     pthread_exit(&value);
 }
 
+
 pthread_t receiver_thread;
 int main(void) {
-    receiver_thread = pthread_create(&receiver_thread, NULL, &run_receiver_thread, NULL);
+    pthread_create(&receiver_thread, NULL, &run_receiver_thread, NULL);
     while(client_is_running){}
     return 0;
 }
