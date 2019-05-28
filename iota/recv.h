@@ -1,1 +1,3 @@
-int mam_receive(uint8_t *payload, int *payload_size, char *host, int port, char *bundle_hash, char *channel_id);
+#include "common.h"
+
+int mam_receive(byte_t *payload, int *payload_size, char *host, int port, char *bundle_hash, char *channel_id);
