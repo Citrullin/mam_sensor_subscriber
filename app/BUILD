@@ -10,6 +10,7 @@ cc_binary(
         "//sensor:sensor",
         "@nanopb//:nanopb",
         "//iota:mam",
+        "//jsmn:jsmn",
     ],
     copts = ["-DLOGGER_ENABLE"],
     linkopts = ["-pthread"],

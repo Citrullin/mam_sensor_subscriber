@@ -16,6 +16,8 @@
 #include "encode/encode.h"
 #include "logging/logging.h"
 
+#include "jsmn/jsmn.h"
+
 #include "iota/send-msg.h"
 
 #include "pb_common.h"
@@ -28,10 +30,10 @@
 //tmp
 #include <errno.h>
 
-#define IOTA_HOST "node.deviceproof.org"
+#define IOTA_HOST "turbor.ddns.net"
 #define IOTA_PORT 14265
-#define IOTA_ADDRESS "HVJ9DCXBHZAOGXZZGREYDUBGOEDUDLSPVCUFAABVSZ9DGXUD9S9CUTYMRFLDPYRVBJOLPLAOZHHKIVGSJ"
-#define IOTA_BUNDLE "UIVVAKNBP9ZLEHRUKHUYXJARY9KWQAKPVFWZQ9TIIVYW9BNLAECDBJHUEXJXZHDTXACVYKKOJUCNGGVTB"
+#define IOTA_ADDRESS "YKEGEJIDKYCCRF9YZGUHKXVIDFLBVXUHKAAWMEISBKPFIK9OTMB9XNYQJJBGNRWXSSEWZMKFRWXOQLFLY"
+#define IOTA_BUNDLE "ZCZLAXHSI9DBSRB9ONKZXXOGAFLWCKEKQGDURQBCG9WEYEELHRKVQTYFQZ9FKCHUJZJDAL9VRG9PGLJ9D"
 
 #define DEBUG_SERVER true
 
@@ -41,40 +43,101 @@ void client_stop(void) {
     client_is_running = false;
 }
 
-float get_scaled_value(environmentSensors_SingleDataPoint *data_point) {
-    if(data_point->value == 0){
-        return 0;
-    }else{
-        return data_point->value / pow(10, -data_point->scale);
+#define AVAILABLE_TOKENS 20
+jsmn_parser parser;
+jsmntok_t tokens[AVAILABLE_TOKENS];
+
+int json_get_token_value(char * result, char * payload, jsmntok_t * token) {
+    int amount = token->end - token->start;
+
+    char * start_ptr = payload + token->start;
+    for(int i = 0; i < amount; i++) {
+        result[i] = start_ptr[i];
     }
+    start_ptr[amount] = '\0';
+
+    return 0;
 }
 
-void data_response_to_env_data(env_sensor_data_t * sensor_data, environmentSensors_DataResponse * data_response) {
-    sensor_data->humanity = get_scaled_value(&data_response->humanity);
-    sensor_data->temperature = get_scaled_value(&data_response->temperature);
-    sensor_data->pm2_5 = get_scaled_value(&data_response->pm2_5);
-    sensor_data->atmosphericPressure = get_scaled_value(&data_response->atmosphericPressure);
+char temp_buffer[100];
+void get_temperature(float * result, char * payload, jsmntok_t * tokens) {
+
+    char string_temperature[] = "temperature";
+
+    for(int i = 0; i < AVAILABLE_TOKENS - 1; i++) {
+        memset(temp_buffer, 0, sizeof(temp_buffer));
+        json_get_token_value(temp_buffer, payload, &tokens[i]);
+
+        if(strcmp(temp_buffer, string_temperature) == 0) {
+            memset(temp_buffer, 0, sizeof(temp_buffer));
+            json_get_token_value(temp_buffer, payload, &tokens[i + 1]);
+
+            break;
+        }
+    }
+
+    memset(tokens, 0, AVAILABLE_TOKENS * sizeof(jsmntok_t));
+    memset(&parser, 0, sizeof(jsmn_parser));
+
+    jsmn_init(&parser);
+    jsmn_parse(&parser, temp_buffer, strlen(temp_buffer), tokens, AVAILABLE_TOKENS);
+
+    char value_buffer[10];
+
+    int value = 0;
+    int scale = 0;
+
+    for(int i = 0; i < AVAILABLE_TOKENS - 1; i++) {
+        if(tokens[i].type == JSMN_STRING){
+            memset(value_buffer, 0, sizeof(value_buffer));
+            json_get_token_value(value_buffer, temp_buffer, &tokens[i]);
+
+            if(strcmp(value_buffer, "value") == 0) {
+                memset(value_buffer, 0, sizeof(value_buffer));
+                json_get_token_value(value_buffer, temp_buffer, &tokens[i + 1]);
+
+                value = atof(value_buffer);
+            }else if(strcmp(value_buffer, "scale") == 0) {
+                memset(value_buffer, 0, sizeof(value_buffer));
+                json_get_token_value(value_buffer, temp_buffer, &tokens[i + 1]);
+
+                scale = atof(value_buffer);
+            }
+        }else if (tokens[i].type == JSMN_UNDEFINED){
+            break;
+        }
+    }
+
+    *result = value * powf(10, scale);
 }
 
 
 void *run_receiver_thread(void *args) {
     (void) args;
 
-    byte_t payload;
+    const char payload[500];
     int payload_size;
-    retcode_t err = mam_receive(&payload, &payload_size, IOTA_HOST, IOTA_PORT, IOTA_BUNDLE, IOTA_ADDRESS);
+    retcode_t err = mam_receive(payload, &payload_size, IOTA_HOST, IOTA_PORT, IOTA_BUNDLE, IOTA_ADDRESS);
+
+    printf("Payload size: %i\n", payload_size);
 
     const char* error = error_2_string(err);
 
     fprintf(stderr, "error %s\n", error);
 
-    environmentSensors_DataResponse data_response = {};
+    printf("Payload sensor: ");
+    for(int i = 0; i < payload_size; i++){
+        printf("%c", payload[i]);
+    }
+    printf("\n");
 
-    env_sensor_data_response_decode(&data_response, (uint8_t *) &payload, payload_size);
-    env_sensor_data_t data = {};
+    jsmn_init(&parser);
+    jsmn_parse(&parser, payload, payload_size, tokens, AVAILABLE_TOKENS);
 
-    data_response_to_env_data(&data, &data_response);
-    log_sensor_data("DEBUG", "run_receiver_thread", "data", &data);
+    float temperature = 0;
+    get_temperature(&temperature, (char *) payload, tokens);
+
+    printf("test\n");
 
     int value = 0;
     client_stop();
